@@ -16,8 +16,8 @@ from roblox_client import (
 USERS_PATH = "users.txt"
 STATE_PATH = "crawl-state.json"
 STATE_VERSION = 1
-COMMIT_EVERY_PAGES = 25
-COMMIT_EVERY_SECONDS = 600
+COMMIT_EVERY_PAGES = 200
+COMMIT_EVERY_SECONDS = 300
 DEFAULT_BUDGET_SECONDS = 16200
 
 
@@ -26,9 +26,10 @@ def log(message):
 
 
 def read_user_ids(path):
-    ids = set()
+    order = []
+    seen = set()
     if not os.path.exists(path):
-        return ids
+        return order
     with open(path, "r", encoding="utf-8") as handle:
         for line in handle:
             line = line.strip()
@@ -38,18 +39,19 @@ def read_user_ids(path):
                 value = int(line)
             except ValueError:
                 continue
-            if value > 0:
-                ids.add(value)
-    return ids
+            if value > 0 and value not in seen:
+                seen.add(value)
+                order.append(value)
+    return order
 
 
-def write_user_ids(path, ids):
+def write_user_ids(path, order):
     directory = os.path.dirname(path)
     if directory:
         os.makedirs(directory, exist_ok=True)
     tmp = path + ".tmp"
     with open(tmp, "w", encoding="utf-8") as handle:
-        for user_id in sorted(ids):
+        for user_id in order:
             handle.write("%d\n" % user_id)
     os.replace(tmp, path)
 
@@ -132,6 +134,7 @@ class Crawler:
         )
         self.logger = logger
         self.users = set()
+        self.user_order = []
         self.visited = set()
         self.queue = deque()
         self.queued = set()
@@ -145,7 +148,8 @@ class Crawler:
         return (self.clock() - self.started_at) >= self.budget_seconds
 
     def load(self):
-        self.users = read_user_ids(self.users_path)
+        self.user_order = read_user_ids(self.users_path)
+        self.users = set(self.user_order)
         state = read_state(self.state_path)
         if state is None:
             root = self.client.resolve_user_id(self.seed)
@@ -157,7 +161,9 @@ class Crawler:
                 "current": None,
                 "finished": False,
             }
-            self.users.add(root)
+        if state.get("root_user_id") and int(state["root_user_id"]) not in self.users:
+            self.users.add(int(state["root_user_id"]))
+            self.user_order.append(int(state["root_user_id"]))
         root_id = int(state.get("root_user_id") or 0)
         self.state = state
         self.visited = set(int(value) for value in state.get("visited") or [])
@@ -179,6 +185,7 @@ class Crawler:
         for user_id in ids:
             if user_id not in self.users:
                 self.users.add(user_id)
+                self.user_order.append(user_id)
                 added += 1
             self._enqueue(user_id)
         return added
@@ -202,7 +209,7 @@ class Crawler:
         self.state["queue"] = list(self.queue)
         self.state["visited"] = sorted(self.visited)
         self.state["finished"] = bool(self.state.get("finished"))
-        write_user_ids(self.users_path, self.users)
+        write_user_ids(self.users_path, self.user_order)
         write_state(self.state_path, self.state)
 
     def _scrape_current(self):
