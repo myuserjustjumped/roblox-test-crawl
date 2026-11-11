@@ -1,0 +1,48 @@
+name: Roblox Friends Crawl
+
+on:
+  schedule:
+    - cron: "*/5 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: roblox-friends-crawl
+  cancel-in-progress: false
+
+jobs:
+  crawl:
+    runs-on: ubuntu-latest
+    timeout-minutes: 350
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Mask secrets
+        env:
+          ROBLOSECURITY: ${{ secrets.ROBLOSECURITY }}
+        run: |
+          if [ -n "$ROBLOSECURITY" ]; then
+            echo "::add-mask::$ROBLOSECURITY"
+          fi
+
+      - name: Configure git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Crawl friends graph
+        env:
+          ROBLOSECURITY: ${{ secrets.ROBLOSECURITY }}
+          SEED_USER: ${{ secrets.SEED_USER }}
+          RUN_BUDGET_SECONDS: "16200"
+        run: python scripts/crawl.py
