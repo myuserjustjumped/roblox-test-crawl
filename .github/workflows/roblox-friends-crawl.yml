@@ -2,11 +2,12 @@ name: Roblox Friends Crawl
 
 on:
   schedule:
-    - cron: "*/5 * * * *"
+    - cron: "0 */6 * * *"
   workflow_dispatch:
 
 permissions:
   contents: write
+  actions: write
 
 concurrency:
   group: roblox-friends-crawl
@@ -46,3 +47,10 @@ jobs:
           SEED_USER: ${{ secrets.SEED_USER }}
           RUN_BUDGET_SECONDS: "16200"
         run: python scripts/crawl.py
+
+      - name: Trigger next run
+        if: success()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh workflow run "${{ github.workflow }}" --ref "${{ github.ref_name }}"
